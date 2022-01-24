@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<title>Event Driven Data Access from Amazon Redshift using Amazon API Gateway WebSockets </title>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="jq/jquery-ui.css">
+  <script src="jq/jquery-3.6.0.min.js"></script>
+  <script src="jq/jquery-ui.js"></script>
+  <style>
+  .ui-datepicker-calendar {
+      display: none;
+  }
+  </style>
+  <script>
+
+
+  const wsEndpoint = "wss://xxxxxx.execute-api.xxxxxx.amazonaws.com/Prod";
+
+  const restEndpoint = "https://xxxxxx.execute-api.xxxxxx.amazonaws.com/Prod";
+  
+  $(function() {
+      
+      $('.date-picker').datepicker( {
+          minDate: new Date(2015, 1 - 1, 1),
+          maxDate: new Date(2015, 12 - 1, 1),
+          changeMonth: true,
+          changeYear: true,
+          showButtonPanel: true,
+          dateFormat: 'MM yy',
+          onClose: function(dateText, inst) {
+              $(this).datepicker('setDate', new Date(inst.selectedYear, inst.selectedMonth, 1));
+          }
+      });
+  });
+
+  function init()
+  {
+
+    websocket = new WebSocket(wsEndpoint);
+
+    websocket.onopen = function(evt) { onOpen(evt) };
+    websocket.onclose = function(evt) { onClose(evt) };
+    websocket.onmessage = function(evt) { onMessage(evt) };
+    websocket.onerror = function(evt) { onError(evt) };
+
+  }
+
+  function onOpen(evt)
+  {
+    
+    writeToScreen("Fetching Results from Server...");
+    const tripMonth = $( "#tripMonth" ).val().replace(/\s/g, "+");
+    const msg = {
+      topicName: "taxi",
+      tripMonth: tripMonth
+    }
+    websocket.send(JSON.stringify(msg))
+    
+  }
+
+  function onClose(evt)
+  {
+    writeToScreen("---");
+  }
+
+  function onMessage(evt)
+  {
+    const data = evt.data
+    const topicName = data.split('/')[0]
+    const statementId = data.split('/')[1]
+    if(topicName !== undefined && statementId !== undefined){
+      $.ajax({
+      url: `${restEndpoint}/?topicName=${topicName}&queryId=${statementId}`,
+      error: function(e) { onError(e); },
+      success: function(output){
+        const tableHeaders = output.columns.join('</th><th>');
+
+        let rows="";
+        for (let record of output.records) {
+          rows = rows + '<tr><td>' + record.join('</td><td>')+ '</td></tr>';
+        }
+
+        $('#outputTable').html('<tr><th>' + tableHeaders + '</th></tr>' + rows);
+
+    }}).then(function(){
+      websocket.close(1000, topicName);
+    });
+    }
+
+    
+  }
+
+  function onError(evt)
+  {
+    console.log(evt);
+    writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+  }
+
+
+  function writeToScreen(message)
+  {
+    var pre = document.createElement("p");
+    pre.style.wordWrap = "break-word";
+    pre.innerHTML = message;
+    $('#outputText').html(pre);
+  }
+
+</script>
+
+</head>
+  <body>
+    <h1>Analyze NYC yellow taxi data for year 2015</h1>
+    <label for="tripMonth">Trip Month :</label>
+    <input name="tripMonth" id="tripMonth" class="date-picker" />
+    <button type="button" onclick=init()>Submit</button>
+    <table id="outputTable"> </table>
+    <div id="outputText"></div>
+  </body>
+</html>
